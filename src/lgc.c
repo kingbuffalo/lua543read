@@ -1102,6 +1102,12 @@ static void sweep2old (lua_State *L, GCObject **p) {
  ** here.  They will all be advanced in 'correctgraylist'. That function
  ** will also remove objects turned white here from any gray list.
  */
+/*
+分代模式下的gc 删除所有死对象( 因为不是步进增量删除模式，所以在清除的时候不会出现 new white 对象，所以白色的都得删除)
+对于没删除的对嘝，增加他们的age，然后清除新对象的色 (老的不变 ）
+对于 TOUCH的 G_TOUCHED1与G_TOUCHED2的对象不能 增加他们的 age 
+因为 旧object 通常不会在这里被清除
+*/
 static GCObject **sweepgen (lua_State *L, global_State *g, GCObject **p,
 		GCObject *limit, GCObject **pfirstold1) {
 	static const lu_byte nextage[] = {
@@ -1459,6 +1465,17 @@ static void stepgenfull (lua_State *L, global_State *g) {
  ** 'GCdebt <= 0' means an explicit call to GC step with "size" zero;
  ** in that case, do a minor collection.
  */
+/*
+开始一个分代 步骤
+一般来讲，这意味着进行一个minor回收，和设置debt来进行下一个回收。
+但是，也有例外的情况，当内存增长到 比上一次major回收结束时内存的 genmajormul% 时。
+会进行一次大回收。
+完成后，检查大回收有没有大辐回收内存（与上一次大回收后的内存相比较，减少增长的50%时）
+如果有，保持状态，下一个大概率为小回收。
+否则：我们会出现一个称之为“bad" 回收。 
+设置 g->lastatomic 状态 ,下一个回收为 大回收
+
+*/
 static void genstep (lua_State *L, global_State *g) {
 	if (g->lastatomic != 0)  /* last collection was a bad one? */
 		stepgenfull(L, g);  /* do a full step */
@@ -1502,6 +1519,9 @@ static void genstep (lua_State *L, global_State *g) {
  ** PAUSEADJ). (Division by 'estimate' should be OK: it cannot be zero,
  ** because Lua cannot even start with less than PAUSEADJ bytes).
  */
+/*
+设置下次进行一次gc的时机. gc 会在 内存占用上升到某个阈值  猜测值*此值 / PAUSEADJ
+*/
 static void setpause (global_State *g) {
 	l_mem threshold, debt;
 	int pause = getgcparam(g->gcpause);
@@ -1523,6 +1543,9 @@ static void setpause (global_State *g) {
  ** not need to skip objects created between "now" and the start of the
  ** real sweep.
  */
+/*
+进入第一个sweep的状态
+*/
 static void entersweep (lua_State *L) {
 	global_State *g = G(L);
 	g->gcstate = GCSswpallgc;
@@ -1548,6 +1571,9 @@ static void deletelist (lua_State *L, GCObject *p, GCObject *limit) {
  ** Call all finalizers of the objects in the given Lua state, and
  ** then free all objects, except for the main thread.
  */
+/*
+运行所有释放object的函数，最后回收内存
+*/
 void luaC_freeallobjects (lua_State *L) {
 	global_State *g = G(L);
 	luaC_changemode(L, KGC_INC);
@@ -1690,6 +1716,9 @@ static lu_mem singlestep (lua_State *L) {
  ** advances the garbage collector until it reaches a state allowed
  ** by 'statemask'
  */
+/*
+一直运行到某种状态
+*/
 void luaC_runtilstate (lua_State *L, int statesmask) {
 	global_State *g = G(L);
 	while (!testbit(statesmask, g->gcstate))
@@ -1704,6 +1733,12 @@ void luaC_runtilstate (lua_State *L, int statesmask) {
  ** finishing a cycle (pause state). Finally, it sets the debt that
  ** controls when next step will be performed.
  */
+/**
+执行一个 增量式gc的一步
+debt 与 step size 都是 字节数 转变成 工作量  的相关变量
+然后循环运行一步一直到完成了很多工作单元？或者完成整个cycle
+然后，设置下一次gc时 debt 的值
+*/
 static void incstep (lua_State *L, global_State *g) {
 	int stepmul = (getgcparam(g->gcstepmul) | 1);  /* avoid division by 0 */
 	l_mem debt = (g->GCdebt / WORK2MEM) * stepmul;
@@ -1725,6 +1760,9 @@ static void incstep (lua_State *L, global_State *g) {
 /*
  ** performs a basic GC step if collector is running
  */
+/**
+运行一步(当gc在运行的时候)
+*/
 void luaC_step (lua_State *L) {
 	global_State *g = G(L);
 	lua_assert(!g->gcemergency);
@@ -1744,6 +1782,11 @@ void luaC_step (lua_State *L) {
  ** to sweep all objects to turn them back to white (as white has not
  ** changed, nothing will be collected).
  */
+/*
+运行一个full的步进式 gc 
+在运行之前，先检查 keepinvariant 
+如果为 true 则 先将所有的黑色转变成白色
+*/
 static void fullinc (lua_State *L, global_State *g) {
 	if (keepinvariant(g))  /* black objects? */
 		entersweep(L); /* sweep everything to turn them back to white */
@@ -1762,6 +1805,11 @@ static void fullinc (lua_State *L, global_State *g) {
  ** some operations which could change the interpreter state in some
  ** unexpected ways (running finalizers and shrinking some structures).
  */
+
+/*
+运行一个 full gc
+如果是 isemergency 则设置状态，以免状态被改变
+*/
 void luaC_fullgc (lua_State *L, int isemergency) {
 	global_State *g = G(L);
 	lua_assert(!g->gcemergency);
