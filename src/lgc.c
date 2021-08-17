@@ -1741,9 +1741,9 @@ debt 与 step size 都是 字节数 转变成 工作量  的相关变量
 */
 static void incstep (lua_State *L, global_State *g) {
 	int stepmul = (getgcparam(g->gcstepmul) | 1);  /* avoid division by 0 */
-	l_mem debt = (g->GCdebt / WORK2MEM) * stepmul;
-	l_mem stepsize = (g->gcstepsize <= log2maxs(l_mem))
-		? ((cast(l_mem, 1) << g->gcstepsize) / WORK2MEM) * stepmul
+	l_mem debt = (g->GCdebt / WORK2MEM) * stepmul;//所有某扫描过新申请的内存大小，转化成，你大概要扫描多少个object
+	l_mem stepsize = (g->gcstepsize <= log2maxs(l_mem))//你这一次扫描，要扫多少个
+		? ((;cast(l_mem, 1) << g->gcstepsize) / WORK2MEM) * stepmul
 		: MAX_LMEM;  /* overflow; keep maximum value */
 	do {  /* repeat until pause or enough "credit" (negative debt) */
 		lu_mem work = singlestep(L);  /* perform one single step */
