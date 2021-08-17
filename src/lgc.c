@@ -1295,6 +1295,11 @@ static void youngcollection (lua_State *L, global_State *g) {
  ** surviving objects to old. Threads go back to 'grayagain'; everything
  ** else is turned black (not in any gray list).
  */
+/*
+清除灰列表,清除对象 为进入gen模式准备一些list
+清除所有“死”对象，然后将存活下来的object转成old
+线程回退到 'grayagin' 除此之外，其它成为黑
+*/
 static void atomic2gen (lua_State *L, global_State *g) {
 	cleargraylists(g);
 	/* sweep all elements making them old */
